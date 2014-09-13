@@ -20,7 +20,7 @@ var (
 		"Regular expression that matches files to watch for changes")
 )
 
-func ok(err error) {
+func maybeBail(err error) {
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -32,19 +32,19 @@ func webHandler(ws *websocket.Conn) {
 	}
 
 	watcher, err := fsnotify.NewWatcher()
-	ok(err)
+	maybeBail(err)
 
 	defer watcher.Close()
 
 	err = watcher.Add(*flagContentDir)
-	ok(err)
+	maybeBail(err)
 
 	for {
 		select {
 		case event := <-watcher.Events:
 			matched, err :=
 				regexp.MatchString(*flagNotifyRegexp, event.Name)
-			ok(err)
+			maybeBail(err)
 
 			if !matched || event.Op&fsnotify.Chmod == fsnotify.Chmod {
 				continue
@@ -52,7 +52,7 @@ func webHandler(ws *websocket.Conn) {
 
 			message := ReloadMessage{R: time.Now()}
 			b, err := json.Marshal(message)
-			ok(err)
+			maybeBail(err)
 
 			log.Println("_reload sent because:", event)
 			websocket.Message.Send(ws, string(b))
