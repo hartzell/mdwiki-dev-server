@@ -130,7 +130,7 @@ func (f *filteringFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 	if isHTML && i >= 0 {
 		// Kilroy was here
-		log.Println("Serving spliced content for " + r.URL.Path)
+		log.Println("Serving modified content for " + r.URL.Path)
 		w.Header().Set("X-Via-FilteringFileServer", "Filtered")
 
 		// update Content-Length header with correct value
@@ -146,7 +146,7 @@ func (f *filteringFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		maybeBail(err)
 	} else {
 		// Kilroy was here
-		log.Println("Serving original content for " + r.URL.Path)
+		log.Println("Serving unaltered content for " + r.URL.Path)
 		w.Header().Set("X-Via-FilteringFileServer", "Skipped")
 
 		// send the original body
