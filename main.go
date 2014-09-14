@@ -8,10 +8,10 @@ import (
 	"encoding/json"
 	"gopkg.in/fsnotify.v1"
 
-	"os"
 	"bytes"
 	"flag"
 	"github.com/op/go-logging"
+	"os"
 	"regexp"
 	"strconv"
 	"time"
@@ -23,7 +23,7 @@ var (
 	flagNotifyRegexp = flag.String("regexp", ".*(md|html|css)$",
 		"Regular expression that matches files to watch for changes")
 	flagVerbose = flag.Bool("verbose", false, "foo")
-	flagDebug = flag.Bool("debug", false, "foo")
+	flagDebug   = flag.Bool("debug", false, "foo")
 
 	log = logging.MustGetLogger("mdwiki-dev-server")
 )
@@ -74,6 +74,7 @@ func maybeBail(err error) {
 		log.Fatal(err)
 	}
 }
+
 // keep track of tickers, useful for debugging
 var tickerId = 1
 
@@ -228,20 +229,22 @@ func (f *filteringFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 	// is content HTML?
 	contentType := w.Header().Get("Content-Type")
+	log.Debug("content type is %s", contentType)
 	isHTML, err := regexp.MatchString("^text/html.*", contentType)
 	maybeBail(err)
 
 	// does content contain our marker (and where is it?)?
 	i := bytes.Index(recorder.Body.Bytes(), []byte("</head>"))
+	log.Debug("splice location found at position %d", i)
 
 	if isHTML && i >= 0 {
 		// Kilroy was here
-		log.Notice("Serving modified content for " + r.URL.Path)
+		log.Notice("serving modified content for " + r.URL.Path)
 		w.Header().Set("X-Via-FilteringFileServer", "Filtered")
 
 		// update Content-Length header with correct value
 		w.Header().Set("Content-Length",
-			strconv.Itoa(len(recorder.Body.Bytes()) + len(snippet)))
+			strconv.Itoa(len(recorder.Body.Bytes())+len(snippet)))
 
 		// write body with snippet spliced in
 		_, err = w.Write(recorder.Body.Bytes()[:i])
