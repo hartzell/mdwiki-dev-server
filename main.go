@@ -24,8 +24,8 @@ var (
 )
 
 var snippet string = `
-<!-- Make sure to remove this in production -->
-<!-- include it above the </body> tag -->
+<!-- From: https://www.npmjs.org/package/node-live-reload -->
+<!-- Inserted by mdwiki-dev-server                        -->
 <script>
 var ws;
 function socket() {
@@ -33,6 +33,7 @@ function socket() {
   ws.onmessage = function ( e ) {
     var data = JSON.parse(e.data);
     if ( data.r ) {
+      ws.close();
       location.reload();
     }
   };
@@ -40,6 +41,7 @@ function socket() {
 setInterval(function () {
   if ( ws ) {
     if ( ws.readyState !== 1 ) {
+      ws.close();
       socket();
     }
   } else {
