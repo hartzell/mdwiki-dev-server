@@ -262,7 +262,7 @@ func (f *filteringFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		maybeBail(err)
 	} else {
 		// Kilroy was here
-		log.Notice("Serving unaltered content for " + r.URL.Path)
+		log.Notice("serving unaltered content for " + r.URL.Path)
 		w.Header().Set("X-Via-FilteringFileServer", "Skipped")
 
 		// send the original body
