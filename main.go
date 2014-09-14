@@ -218,6 +218,7 @@ func FilteringFileServer(root http.FileSystem) http.Handler {
 func (f *filteringFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var err error
 
+	log.Debug("serving: %s", r.URL.String())
 	recorder := httptest.NewRecorder()
 	h := http.FileServer(f.root)
 	h.ServeHTTP(recorder, r)
