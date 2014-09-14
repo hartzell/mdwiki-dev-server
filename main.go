@@ -58,41 +58,114 @@ func maybeBail(err error) {
 	}
 }
 
-func webHandler(ws *websocket.Conn) {
-	type ReloadMessage struct {
+// newTicker starts a ticker goroutine that creates two channels
+// (ticker, tickerShutdown) then wakes up every once in a while and
+// sends a message on to its "ticker" channel.  It listens for a
+// message on its tickerShutdown channel and exits if/when it receives
+// one.
+func newTicker(d time.Duration) (chan bool, chan bool) {
+	ticker := make(chan bool)
+	tickerShutdown := make(chan bool)
+
+	go func() {
+	Loop:
+		for {
+			time.Sleep(d)
+			select {
+			case ticker <- true:
+			case <-tickerShutdown:
+				break Loop
+			default:
+			}
+		}
+	}()
+	return ticker, tickerShutdown
+}
+
+// newWatcher starts a goroutine that sends notifications about
+// changes within a directory.  It returns two channels: notifier, on
+// which it sends the fsnotify event as a string; and
+// notifierShutdown, on which it listens for a message telling it to
+// shutdown.
+//
+// It takes two arguments, a directory name to watch (string) and a
+// regular expression which names much match in order to cause a
+// notification.
+func newWatcher(dir string, matchPattern string) (chan string, chan bool) {
+	notifier := make(chan string)
+	notifierShutdown := make(chan bool)
+
+	go func() {
+		watcher, err := fsnotify.NewWatcher()
+		maybeBail(err)
+		defer watcher.Close()
+
+		err = watcher.Add(dir)
+		maybeBail(err)
+
+	Loop:
+		for {
+			select {
+			case event := <-watcher.Events:
+				matched, err := regexp.MatchString(matchPattern, event.Name)
+				maybeBail(err)
+
+				if !matched || event.Op&fsnotify.Chmod == fsnotify.Chmod {
+					continue
+				}
+				notifier <- event.String()
+			case <-notifierShutdown:
+				break Loop
+			case err := <-watcher.Errors:
+				log.Println("error in filesystem watcher:", err)
+			}
+		}
+	}()
+	return notifier, notifierShutdown
+}
+
+// newReloadMessage returns an instance of the message packet that the
+// node-live-reload javascript expects, as a JSON string.
+func newReloadMessage() (message string) {
+	type reloadMessage struct {
 		R time.Time `json:"r"`
 	}
 
-	watcher, err := fsnotify.NewWatcher()
+	b, err := json.Marshal(reloadMessage{R: time.Now()})
 	maybeBail(err)
+	message = string(b)
+	return message
+}
 
-	defer watcher.Close()
+func webHandler(ws *websocket.Conn) {
+	log.Println("Entering webHandler")
 
-	err = watcher.Add(*flagContentDir)
-	maybeBail(err)
+	ticker, tickerShutdown := newTicker(1 * time.Second)
+	notifier, notifierShutdown := newWatcher(*flagContentDir, *flagNotifyRegexp)
 
+	var somethingChanged bool = false
+Loop:
 	for {
 		select {
-		case event := <-watcher.Events:
-			matched, err :=
-				regexp.MatchString(*flagNotifyRegexp, event.Name)
-			maybeBail(err)
+		case note := <-notifier:
+			log.Println("reload needed because:", note)
+			somethingChanged = true
+		case _ = <-ticker:
+			if somethingChanged == true {
+				m := newReloadMessage()
+				log.Println("sending reload message: " + m)
 
-			if !matched || event.Op&fsnotify.Chmod == fsnotify.Chmod {
-				continue
+				err := websocket.Message.Send(ws, m)
+				maybeBail(err)
+
+				somethingChanged = false
+				tickerShutdown <- true
+				notifierShutdown <- true
+				break Loop
 			}
-
-			message := ReloadMessage{R: time.Now()}
-			b, err := json.Marshal(message)
-			maybeBail(err)
-
-			log.Println("_reload sent because:", event)
-			websocket.Message.Send(ws, string(b))
-
-		case err := <-watcher.Errors:
-			log.Println("error:", err)
 		}
 	}
+	log.Println("Leaving webHandler")
 }
 
 // A wrapper for the FileServer.  See
