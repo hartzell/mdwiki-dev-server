@@ -8,19 +8,24 @@ import (
 	"encoding/json"
 	"gopkg.in/fsnotify.v1"
 
+	"os"
 	"bytes"
 	"flag"
-	"log"
+	"github.com/op/go-logging"
 	"regexp"
 	"strconv"
 	"time"
 )
 
 var (
-	flagContentDir = flag.String("d", "./",
+	flagContentDir = flag.String("dir", "./",
 		"Directory from which to read files")
-	flagNotifyRegexp = flag.String("r", ".*(md|html|css)$",
+	flagNotifyRegexp = flag.String("regexp", ".*(md|html|css)$",
 		"Regular expression that matches files to watch for changes")
+	flagVerbose = flag.Bool("verbose", false, "foo")
+	flagDebug = flag.Bool("debug", false, "foo")
+
+	log = logging.MustGetLogger("mdwiki-dev-server")
 )
 
 var snippet string = `
@@ -52,11 +57,25 @@ setInterval(function () {
 
 `
 
+func setupLogging(level logging.Level) {
+	var format = "%{color}%{time:15:04:05.000000} ▶ %{level:.4s} %{id:03x}%{color:reset} %{message}"
+
+	// Setup one stderr and one syslog backend and combine them both into one
+	// logging backend. By default stderr is used with the standard log flag.
+	logBackend := logging.NewLogBackend(os.Stderr, "", 0)
+	logging.SetBackend(logBackend)
+	logging.SetFormatter(logging.MustStringFormatter(format))
+
+	logging.SetLevel(level, "mdwiki-dev-server")
+}
+
 func maybeBail(err error) {
 	if err != nil {
 		log.Fatal(err)
 	}
 }
+// keep track of tickers, useful for debugging
+var tickerId = 1
 
 // newTicker starts a ticker goroutine that creates two channels
 // (ticker, tickerShutdown) then wakes up every once in a while and
@@ -68,12 +87,16 @@ func newTicker(d time.Duration) (chan bool, chan bool) {
 	tickerShutdown := make(chan bool)
 
 	go func() {
+		myId := tickerId
+		tickerId++
 	Loop:
 		for {
 			time.Sleep(d)
 			select {
 			case ticker <- true:
+				log.Debug("ticker (%d) fired", myId)
 			case <-tickerShutdown:
+				log.Debug("ticker (%d) got shutdown message", myId)
 				break Loop
 			default:
 			}
@@ -81,6 +104,9 @@ func newTicker(d time.Duration) (chan bool, chan bool) {
 	}()
 	return ticker, tickerShutdown
 }
+
+// keep track of watchers, useful for debugging.
+var watcherId int = 1
 
 // newWatcher starts a goroutine that sends notifications about
 // changes within a directory.  It returns two channels: notifier, on
@@ -96,6 +122,9 @@ func newWatcher(dir string, matchPattern string) (chan string, chan bool) {
 	notifierShutdown := make(chan bool)
 
 	go func() {
+		myId := watcherId
+		watcherId++
+
 		watcher, err := fsnotify.NewWatcher()
 		maybeBail(err)
 		defer watcher.Close()
@@ -114,10 +143,11 @@ func newWatcher(dir string, matchPattern string) (chan string, chan bool) {
 					continue
 				}
 				notifier <- event.String()
+				log.Debug("notifier(%d) saw %s", myId, event.String())
 			case <-notifierShutdown:
 				break Loop
 			case err := <-watcher.Errors:
-				log.Println("error in filesystem watcher:", err)
+				log.Error("error in filesystem watcher: %s", err)
 			}
 		}
 	}()
@@ -138,7 +168,7 @@ func newReloadMessage() (message string) {
 }
 
 func webHandler(ws *websocket.Conn) {
-	log.Println("Entering webHandler")
+	log.Debug("Entering webHandler")
 
 	ticker, tickerShutdown := newTicker(1 * time.Second)
 	notifier, notifierShutdown := newWatcher(*flagContentDir, *flagNotifyRegexp)
@@ -148,12 +178,13 @@ Loop:
 	for {
 		select {
 		case note := <-notifier:
-			log.Println("reload needed because:", note)
+			log.Notice("reload needed because: %s", note)
 			somethingChanged = true
 		case _ = <-ticker:
+			log.Debug("handling ticker")
 			if somethingChanged == true {
 				m := newReloadMessage()
-				log.Println("sending reload message: " + m)
+				log.Notice("sending reload message: %s", m)
 
 				err := websocket.Message.Send(ws, m)
 				maybeBail(err)
@@ -165,7 +196,7 @@ Loop:
 			}
 		}
 	}
-	log.Println("Leaving webHandler")
+	log.Debug("Leaving webHandler")
 }
 
 // A wrapper for the FileServer.  See
@@ -205,7 +236,7 @@ func (f *filteringFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 	if isHTML && i >= 0 {
 		// Kilroy was here
-		log.Println("Serving modified content for " + r.URL.Path)
+		log.Notice("Serving modified content for " + r.URL.Path)
 		w.Header().Set("X-Via-FilteringFileServer", "Filtered")
 
 		// update Content-Length header with correct value
@@ -221,7 +252,7 @@ func (f *filteringFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		maybeBail(err)
 	} else {
 		// Kilroy was here
-		log.Println("Serving unaltered content for " + r.URL.Path)
+		log.Notice("Serving unaltered content for " + r.URL.Path)
 		w.Header().Set("X-Via-FilteringFileServer", "Skipped")
 
 		// send the original body
@@ -232,6 +263,14 @@ func (f *filteringFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 func main() {
 	flag.Parse()
+
+	if *flagVerbose {
+		setupLogging(logging.INFO)
+	} else if *flagDebug {
+		setupLogging(logging.DEBUG)
+	} else {
+		setupLogging(logging.ERROR)
+	}
 
 	http.Handle("/_reloader", websocket.Handler(webHandler))
 	http.Handle("/", FilteringFileServer(http.Dir(*flagContentDir)))
