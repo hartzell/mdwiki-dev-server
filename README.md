@@ -1,3 +1,7 @@
+# WIP
+
+This is a work in progress.  No warranty, express or implied.
+
 # mdwiki-dev-server
 
 [mdwiki](http://dynalon.github.io/mdwiki/#!index.md) is
