@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"text/template"
 
 	"code.google.com/p/go.net/websocket"
 	"encoding/json"
@@ -22,19 +23,22 @@ var (
 		"Directory from which to read files")
 	flagNotifyRegexp = flag.String("regexp", ".*(md|html|css)$",
 		"Regular expression that matches files to watch for changes")
+	flagAddr = flag.String("addr", "127.0.0.1",
+		"specify address, default \"127.0.0.1\"")
+	flagPort    = flag.String("port", "8080", "specify port, default \"8080\"")
 	flagVerbose = flag.Bool("verbose", false, "foo")
 	flagDebug   = flag.Bool("debug", false, "foo")
 
 	log = logging.MustGetLogger("mdwiki-dev-server")
 )
 
-var snippet string = `
+var snippet_tmpl string = `
 <!-- From: https://www.npmjs.org/package/node-live-reload -->
 <!-- Inserted by mdwiki-dev-server                        -->
 <script>
 var ws;
 function socket() {
-  ws = new WebSocket("ws://127.0.0.1:8080/_reloader");
+  ws = new WebSocket("ws://{{.Addr}}:{{.Port}}/_reloader");
   ws.onmessage = function ( e ) {
     var data = JSON.parse(e.data);
     if ( data.r ) {
@@ -215,8 +219,32 @@ func FilteringFileServer(root http.FileSystem) http.Handler {
 	return &filteringFileServer{root}
 }
 
+func buildSnippet(addr string, port string) ([]byte, error) {
+
+	var buffer bytes.Buffer
+	type Info struct {
+		Addr string
+		Port string
+	}
+
+	t, err := template.New("snippet").Parse(snippet_tmpl)
+	if err != nil {
+		return nil, err
+	}
+
+	err = t.Execute(&buffer, Info{addr, port})
+	if err != nil {
+		return nil, err
+	}
+
+	return buffer.Bytes(), nil
+}
+
 func (f *filteringFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var err error
+
+	snippet, err := buildSnippet(*flagAddr, *flagPort)
+	maybeBail(err)
 
 	log.Debug("serving: %s", r.URL.String())
 	recorder := httptest.NewRecorder()
@@ -256,7 +284,7 @@ func (f *filteringFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		// write body with snippet spliced in
 		_, err = w.Write(recorder.Body.Bytes()[:i])
 		maybeBail(err)
-		_, err = w.Write([]byte(snippet))
+		_, err = w.Write(snippet)
 		maybeBail(err)
 		_, err = w.Write(recorder.Body.Bytes()[i:])
 		maybeBail(err)
@@ -285,5 +313,5 @@ func main() {
 	http.Handle("/_reloader", websocket.Handler(webHandler))
 	http.Handle("/", FilteringFileServer(http.Dir(*flagContentDir)))
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(*flagAddr+":"+*flagPort, nil))
 }
