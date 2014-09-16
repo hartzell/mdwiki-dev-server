@@ -192,7 +192,7 @@ Loop:
 
 				somethingChanged = false
 				close(tickerShutdown)
-			        close(notifierShutdown)
+				close(notifierShutdown)
 				break Loop
 			}
 		}
@@ -226,7 +226,7 @@ func (f *filteringFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	// we copy the original headers first
 	for k, v := range recorder.Header() {
 		//
-		if k ==  "Last-Modified" || k == "ETag" {
+		if k == "Last-Modified" || k == "ETag" {
 			log.Debug("skipping cache control header: %s", k)
 			continue
 		}
