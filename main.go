@@ -62,7 +62,7 @@ setInterval(function () {
 `
 
 func setupLogging(level logging.Level) {
-	var format = "%{color}%{time:15:04:05.000000} ▶ %{level:.4s} %{id:03x}%{color:reset} %{message}"
+	var format = "%{color}%{time:15:04:05.000000} %{level:.4s} %{id:03x} ▶ %{shortfile}%{color:reset} %{message}"
 
 	// Setup one stderr and one syslog backend and combine them both into one
 	// logging backend. By default stderr is used with the standard log flag.
