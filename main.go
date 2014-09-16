@@ -83,9 +83,9 @@ var tickerId = 1
 // sends a message on to its "ticker" channel.  It listens for a
 // message on its tickerShutdown channel and exits if/when it receives
 // one.
-func newTicker(d time.Duration) (chan bool, chan bool) {
+func newTicker(d time.Duration) (chan bool, chan interface{}) {
 	ticker := make(chan bool)
-	tickerShutdown := make(chan bool)
+	tickerShutdown := make(chan interface{})
 
 	go func() {
 		myId := tickerId
@@ -118,9 +118,9 @@ var watcherId int = 1
 // It takes two arguments, a directory name to watch (string) and a
 // regular expression which names much match in order to cause a
 // notification.
-func newWatcher(dir string, matchPattern string) (chan string, chan bool) {
+func newWatcher(dir string, matchPattern string) (chan string, chan interface{}) {
 	notifier := make(chan string)
-	notifierShutdown := make(chan bool)
+	notifierShutdown := make(chan interface{})
 
 	go func() {
 		myId := watcherId
@@ -191,8 +191,8 @@ Loop:
 				maybeBail(err)
 
 				somethingChanged = false
-				tickerShutdown <- true
-				notifierShutdown <- true
+				close(tickerShutdown)
+			        close(notifierShutdown)
 				break Loop
 			}
 		}
