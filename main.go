@@ -21,7 +21,7 @@ import (
 var (
 	flagContentDir = flag.String("dir", "./",
 		"Directory from which to read files")
-	flagNotifyRegexp = flag.String("regexp", ".*(md|html|css)$",
+	flagNotifyRegexp = flag.String("regexp", ".*(json|md|html|css)$",
 		"Regular expression that matches files to watch for changes")
 	flagAddr = flag.String("addr", "127.0.0.1",
 		"specify address, default \"127.0.0.1\"")
