@@ -32,32 +32,14 @@ var (
 	log = logging.MustGetLogger("mdwiki-dev-server")
 )
 
-var snippet_tmpl string = `
-<!-- From: https://www.npmjs.org/package/node-live-reload -->
-<!-- Inserted by mdwiki-dev-server                        -->
-<script>
-var ws;
-function socket() {
-  ws = new WebSocket("ws://{{.Addr}}:{{.Port}}/_reloader");
-  ws.onmessage = function ( e ) {
-    var data = JSON.parse(e.data);
-    if ( data.r ) {
-      ws.close();
-      location.reload();
-    }
-  };
-}
-setInterval(function () {
-  if ( ws ) {
-    if ( ws.readyState !== 1 ) {
-      ws.close();
-      socket();
-    }
-  } else {
-    socket();
-  }
-}, 1000);
-</script>
+var snippetTmpl = ` <!-- From:
+https://www.npmjs.org/package/node-live-reload --> <!-- Inserted by
+mdwiki-dev-server --> <script> var ws; function socket() { ws = new
+WebSocket("ws://{{.Addr}}:{{.Port}}/_reloader"); ws.onmessage =
+function ( e ) { var data = JSON.parse(e.data); if ( data.r ) {
+ws.close(); location.reload(); } }; } setInterval(function () { if (
+ws ) { if ( ws.readyState !== 1 ) { ws.close(); socket(); } } else {
+socket(); } }, 1000); </script>
 
 `
 
@@ -80,7 +62,7 @@ func maybeBail(err error) {
 }
 
 // keep track of tickers, useful for debugging
-var tickerId = 1
+var tickerID = 1
 
 // newTicker starts a ticker goroutine that creates two channels
 // (ticker, tickerShutdown) then wakes up every once in a while and
@@ -92,16 +74,16 @@ func newTicker(d time.Duration) (chan bool, chan interface{}) {
 	tickerShutdown := make(chan interface{})
 
 	go func() {
-		myId := tickerId
-		tickerId++
+		myID := tickerID
+		tickerID++
 	Loop:
 		for {
 			time.Sleep(d)
 			select {
 			case ticker <- true:
-				log.Debug("ticker (%d) fired", myId)
+				log.Debug("ticker (%d) fired", myID)
 			case <-tickerShutdown:
-				log.Debug("ticker (%d) got shutdown message", myId)
+				log.Debug("ticker (%d) got shutdown message", myID)
 				break Loop
 			default:
 			}
@@ -111,7 +93,7 @@ func newTicker(d time.Duration) (chan bool, chan interface{}) {
 }
 
 // keep track of watchers, useful for debugging.
-var watcherId int = 1
+var watcherID = 1
 
 // newWatcher starts a goroutine that sends notifications about
 // changes within a directory.  It returns two channels: notifier, on
@@ -127,8 +109,8 @@ func newWatcher(dir string, matchPattern string) (chan string, chan interface{})
 	notifierShutdown := make(chan interface{})
 
 	go func() {
-		myId := watcherId
-		watcherId++
+		myID := watcherID
+		watcherID++
 
 		watcher, err := fsnotify.NewWatcher()
 		maybeBail(err)
@@ -148,10 +130,12 @@ func newWatcher(dir string, matchPattern string) (chan string, chan interface{})
 					continue
 				}
 				notifier <- event.String()
-				log.Debug("notifier(%d) saw %s", myId, event.String())
+				log.Debug("notifier(%d) saw %s", myID, event.String())
 			case <-notifierShutdown:
 				break Loop
 			case err := <-watcher.Errors:
+				// wish there was a way to silence this go vet error...
+				// https://code.google.com/p/go/issues/detail?id=6407
 				log.Error("error in filesystem watcher: %s", err)
 			}
 		}
@@ -178,7 +162,7 @@ func webHandler(ws *websocket.Conn) {
 	ticker, tickerShutdown := newTicker(1 * time.Second)
 	notifier, notifierShutdown := newWatcher(*flagContentDir, *flagNotifyRegexp)
 
-	var somethingChanged bool = false
+	var somethingChanged = false
 Loop:
 	for {
 		select {
@@ -215,6 +199,7 @@ type filteringFileServer struct {
 	root http.FileSystem
 }
 
+// FilteringFileServer Middleware that splices text into html as it flies by
 func FilteringFileServer(root http.FileSystem) http.Handler {
 	return &filteringFileServer{root}
 }
@@ -227,7 +212,7 @@ func buildSnippet(addr string, port string) ([]byte, error) {
 		Port string
 	}
 
-	t, err := template.New("snippet").Parse(snippet_tmpl)
+	t, err := template.New("snippet").Parse(snippetTmpl)
 	if err != nil {
 		return nil, err
 	}
